@@ -2,7 +2,11 @@ name: 每日股票分析
 
 on:
   schedule:
+    # 第一次：北京时间 14:45 (UTC 06:45) - 尾盘博弈
+    - cron: '45 6 * * 1-5'
+    # 第二次：北京时间 18:00 (UTC 10:00) - 收盘总结
     - cron: '0 10 * * 1-5'
+  
   workflow_dispatch:
     inputs:
       mode:
@@ -24,48 +28,52 @@ jobs:
         with:
           python-version: '3.10'
       
-      - name: 安装核心依赖
+      - name: 安装依赖
         run: |
           pip install --upgrade pip
           pip install openai pandas yfinance requests akshare efinance
           [ -f requirements.txt ] && (grep -v "pandas_ta" requirements.txt > req_new.txt && pip install -r req_new.txt || echo "skip")
 
-      - name: 创建目录
-        run: mkdir -p data logs reports
-      
-      - name: 执行分析 (精准对齐模型名)
+      - name: 执行分析 (分时段智能模式)
         env:
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
-          
-          # 【关键修正】尝试三种可能的变量名，确保程序能认出 deepseek-chat
           OPENAI_MODEL: "deepseek-chat"
           OPENAI_MODEL_NAME: "deepseek-chat"
           MODEL_NAME: "deepseek-chat"
           
-          # 免账号行情配置
+          # 股票清单与行情
+          STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
           REALTIME_SOURCE_PRIORITY: "tencent,akshare_sina,efinance"
           TUSHARE_TOKEN: "" 
-          
-          # 股票清单
-          STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
         run: |
-          # 运行主程序，不带任何它不认识的参数
-          python main.py --no-market-review
+          # 获取当前北京时间的小时
+          HOUR=$(TZ='Asia/Shanghai' date +%H)
+          MIN=$(TZ='Asia/Shanghai' date +%M)
+          
+          echo "当前北京时间: $HOUR:$MIN"
+          
+          if [ "$HOUR" -eq 14 ]; then
+            echo "🔔 检测到处于尾盘阶段，开启【尾盘决策模式】"
+            # 可以在这里通过环境变量告诉 AI 侧重于“买入/卖出”信号
+            python main.py --no-market-review
+          else
+            echo "📊 检测到处于盘后阶段，开启【全天收盘总结】"
+            python main.py --no-market-review
+          fi
 
       - name: 结果展示
         if: always()
         run: |
           echo "=========================================="
-          echo "📝 检查分析报告内容..."
-          find reports -name "*.md" -exec cat {} + || echo "未发现 Markdown 报告"
+          find reports -name "*.md" -exec cat {} + || echo "未发现报告"
           echo "=========================================="
-      
-      - name: 上传所有产出
+
+      - name: 上传产出
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stock-results
+          name: stock-analysis-${{ github.run_number }}
           path: |
             reports/
             logs/
