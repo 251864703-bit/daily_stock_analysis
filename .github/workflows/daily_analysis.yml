@@ -34,46 +34,50 @@ jobs:
           pip install openai pandas yfinance requests akshare efinance
           [ -f requirements.txt ] && (grep -v "pandas_ta" requirements.txt > req_new.txt && pip install -r req_new.txt || echo "skip")
 
-      - name: 执行分析 (分时段智能模式)
+      - name: 执行分析 (全链路接通模式)
         env:
+          # 核心 API 配置
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
           OPENAI_MODEL: "deepseek-chat"
           OPENAI_MODEL_NAME: "deepseek-chat"
           MODEL_NAME: "deepseek-chat"
           
-          # 股票清单与行情
+          # 【最重要】企业微信通知通道接通
+          WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
+          
+          # 股票清单与行情配置
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
           REALTIME_SOURCE_PRIORITY: "tencent,akshare_sina,efinance"
           TUSHARE_TOKEN: "" 
         run: |
-          # 获取当前北京时间的小时
+          # 获取当前北京时间的小时，用于日志显示
           HOUR=$(TZ='Asia/Shanghai' date +%H)
           MIN=$(TZ='Asia/Shanghai' date +%M)
           
-          echo "当前北京时间: $HOUR:$MIN"
+          echo "=========================================="
+          echo "⏰ 当前北京时间: $HOUR:$MIN"
           
           if [ "$HOUR" -eq 14 ]; then
-            echo "🔔 检测到处于尾盘阶段，开启【尾盘决策模式】"
-            # 可以在这里通过环境变量告诉 AI 侧重于“买入/卖出”信号
+            echo "🔔 触发时段：收盘前 15 分钟（尾盘决策模式）"
             python main.py --no-market-review
           else
-            echo "📊 检测到处于盘后阶段，开启【全天收盘总结】"
+            echo "📊 触发时段：盘后总结（全天行情复盘）"
             python main.py --no-market-review
           fi
+          echo "=========================================="
 
       - name: 结果展示
         if: always()
         run: |
-          echo "=========================================="
-          find reports -name "*.md" -exec cat {} + || echo "未发现报告"
-          echo "=========================================="
-
-      - name: 上传产出
+          echo "📝 检查分析报告内容..."
+          find reports -name "*.md" -exec cat {} + || echo "未发现 Markdown 报告"
+      
+      - name: 上传产出文件
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stock-analysis-${{ github.run_number }}
+          name: stock-results-${{ github.run_number }}
           path: |
             reports/
             logs/
