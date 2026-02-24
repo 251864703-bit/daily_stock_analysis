@@ -24,22 +24,22 @@ jobs:
         with:
           python-version: '3.10'
       
-      - name: 安装依赖
+      - name: 安装核心依赖
         run: |
           pip install --upgrade pip
           pip install openai pandas yfinance requests akshare efinance
-          # 忽略无法安装的库，确保核心流程继续
           [ -f requirements.txt ] && (grep -v "pandas_ta" requirements.txt > req_new.txt && pip install -r req_new.txt || echo "skip")
 
       - name: 创建目录
         run: mkdir -p data logs reports
       
-      - name: 执行分析 (兼容性模式)
+      - name: 执行分析 (精准对齐模型名)
         env:
-          # 【核心】不再通过参数传模型，直接通过环境变量喂给程序
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
-          # 很多程序会默认读取这些变量名
+          
+          # 【关键修正】尝试三种可能的变量名，确保程序能认出 deepseek-chat
+          OPENAI_MODEL: "deepseek-chat"
           OPENAI_MODEL_NAME: "deepseek-chat"
           MODEL_NAME: "deepseek-chat"
           
@@ -50,14 +50,16 @@ jobs:
           # 股票清单
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
         run: |
-          # 【关键修改】删掉程序不认识的 --model 参数，只保留它认识的
+          # 运行主程序，不带任何它不认识的参数
           python main.py --no-market-review
 
-      - name: 结果展示与上传
+      - name: 结果展示
         if: always()
         run: |
-          echo "📝 检查是否生成报告..."
+          echo "=========================================="
+          echo "📝 检查分析报告内容..."
           find reports -name "*.md" -exec cat {} + || echo "未发现 Markdown 报告"
+          echo "=========================================="
       
       - name: 上传所有产出
         uses: actions/upload-artifact@v4
