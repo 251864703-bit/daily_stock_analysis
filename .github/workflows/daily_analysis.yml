@@ -1,16 +1,18 @@
-name: 每日股票分析
+name: 每日股票分析进阶版
 
 on:
   schedule:
-    # 第一次：北京时间 14:45 (UTC 06:45) - 尾盘博弈
+    # 1. 北京时间 09:35 (UTC 01:35) - 开盘异动捕捉
+    - cron: '35 1 * * 1-5'
+    # 2. 北京时间 14:45 (UTC 06:45) - 尾盘博弈决策
     - cron: '45 6 * * 1-5'
-    # 第二次：北京时间 18:00 (UTC 10:00) - 收盘总结
+    # 3. 北京时间 18:00 (UTC 10:00) - 收盘总结
     - cron: '0 10 * * 1-5'
   
   workflow_dispatch:
     inputs:
       mode:
-        description: '模式'
+        description: '运行模式'
         required: true
         default: 'stocks-only'
         type: choice
@@ -34,16 +36,15 @@ jobs:
           pip install openai pandas yfinance requests akshare efinance
           [ -f requirements.txt ] && (grep -v "pandas_ta" requirements.txt > req_new.txt && pip install -r req_new.txt || echo "skip")
 
-      - name: 执行分析 (全链路接通模式)
+      - name: 执行分析 (结构化监控模式)
         env:
           # 核心 API 配置
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
           OPENAI_MODEL: "deepseek-chat"
-          OPENAI_MODEL_NAME: "deepseek-chat"
           MODEL_NAME: "deepseek-chat"
           
-          # 【最重要】企业微信通知通道接通
+          # 企业微信通知通道 (已接通)
           WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
           
           # 股票清单与行情配置
@@ -51,18 +52,22 @@ jobs:
           REALTIME_SOURCE_PRIORITY: "tencent,akshare_sina,efinance"
           TUSHARE_TOKEN: "" 
         run: |
-          # 获取当前北京时间的小时，用于日志显示
+          # 获取北京时间小时
           HOUR=$(TZ='Asia/Shanghai' date +%H)
-          MIN=$(TZ='Asia/Shanghai' date +%M)
-          
           echo "=========================================="
-          echo "⏰ 当前北京时间: $HOUR:$MIN"
+          echo "⏰ 当前北京时间: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M')"
           
-          if [ "$HOUR" -eq 14 ]; then
-            echo "🔔 触发时段：收盘前 15 分钟（尾盘决策模式）"
+          if [ "$HOUR" -eq 9 ] || [ "$HOUR" -eq 10 ]; then
+            echo "🚀 模式：【早盘异动监控】"
+            echo "重点：识别开盘量能，标注关键支撑/压力位"
+            python main.py --no-market-review
+          elif [ "$HOUR" -eq 14 ]; then
+            echo "🔔 模式：【尾盘决策提醒】"
+            echo "重点：给出明确买卖建议，防止破位或确认突破"
             python main.py --no-market-review
           else
-            echo "📊 触发时段：盘后总结（全天行情复盘）"
+            echo "📊 模式：【全天总结复盘】"
+            echo "重点：技术面趋势深度分析，更新明日观察位"
             python main.py --no-market-review
           fi
           echo "=========================================="
@@ -71,7 +76,7 @@ jobs:
         if: always()
         run: |
           echo "📝 检查分析报告内容..."
-          find reports -name "*.md" -exec cat {} + || echo "未发现 Markdown 报告"
+          find reports -name "*.md" -exec cat {} + || echo "未发现报告"
       
       - name: 上传产出文件
         uses: actions/upload-artifact@v4
