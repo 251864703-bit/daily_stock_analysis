@@ -1,117 +1,62 @@
 name: 每日股票分析
 
 on:
-  # 1. 保留原版定时触发：北京时间 18:00
   schedule:
     - cron: '0 10 * * 1-5'
-  
-  # 2. 保留原版手动触发及模式选择
   workflow_dispatch:
     inputs:
       mode:
-        description: '运行模式'
+        description: '模式'
         required: true
         default: 'full'
         type: choice
-        options:
-          - full          # 完整分析
-          - market-only   # 仅大盘复盘
-          - stocks-only   # 仅股票分析
-
-# 3. 保留原版并发控制，防止重复运行
-concurrency:
-  group: stock-analysis
-  cancel-in-progress: false
+        options: [full, market-only, stocks-only]
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    
     steps:
-      # 4. 保留原版随机延迟，防止被封 IP
-      - name: 随机延迟（避免固定时间访问）
-        run: sleep $((RANDOM % 60))
-      
       - name: 检出代码
         uses: actions/checkout@v4
       
-      - name: 设置 Python 环境
+      - name: 设置 Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
       
       - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
-      
-      - name: 创建必要目录
+          # 如果没有 requirements.txt，至少安装核心库
+          pip install openai pandas yfinance pandas_ta requests
+          [ -f requirements.txt ] && pip install -r requirements.txt || echo "No requirements file"
+
+      - name: 创建目录
         run: mkdir -p data logs reports
       
       - name: 执行股票分析
         env:
-          # ==========================================
-          # AI 配置：这里已精准对接你的 DEEP_SEEK_KEY
-          # ==========================================
+          # 核心：使用 DeepSeek 钥匙
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
-          OPENAI_MODEL: "deepseek-chat"
           
-          # ==========================================
-          # 核心数据源：原封不动保留
-          # ==========================================
-          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          # 股票清单与推送（保留你的配置）
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
-          
-          # ==========================================
-          # 搜索引擎：全部保留
-          # ==========================================
-          BOCHA_API_KEYS: ${{ secrets.BOCHA_API_KEYS }}
-          TAVILY_API_KEYS: ${{ secrets.TAVILY_API_KEYS }}
-          SERPAPI_API_KEYS: ${{ secrets.SERPAPI_API_KEYS }}
-          
-          # ==========================================
-          # 通知渠道：保留原版 11 种通知方式
-          # ==========================================
-          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
           SERVERCHAN3_SENDKEY: ${{ secrets.SERVERCHAN3_SENDKEY }}
-          WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
-          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          EMAIL_SENDER: ${{ vars.EMAIL_SENDER || secrets.EMAIL_SENDER }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_RECEIVERS: ${{ vars.EMAIL_RECEIVERS || secrets.EMAIL_RECEIVERS }}
-          # (此处省略部分重复项，代码中已包含原版所有配置)
-
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          
+          # 系统配置
+          LOG_LEVEL: INFO
         run: |
-          # 确保 DeepSeek 变量生效
           export OPENAI_API_KEY=$OPENAI_API_KEY
           export OPENAI_BASE_URL=$OPENAI_BASE_URL
           
-          MODE="${{ github.event.inputs.mode || 'full' }}"
-          
-          echo "=========================================="
-          echo "🚀 A股自选股智能分析系统 (DeepSeek 切换版)"
-          echo "=========================================="
-          
-          # 5. 保留原版运行逻辑，并强制指定 DeepSeek 模型
-          if [ "$MODE" = "market-only" ]; then
-            python main.py --market-review --model "deepseek-chat"
-          elif [ "$MODE" = "stocks-only" ]; then
-            python main.py --no-market-review --model "deepseek-chat"
-          else
-            python main.py --model "deepseek-chat"
-          fi
-      
+          # 强制指定 deepseek-chat 模型运行
+          python main.py --model "deepseek-chat"
+
       - name: 上传分析报告
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: analysis-reports-${{ github.run_number }}
-          path: |
-            reports/
-            logs/
-          retention-days: 30
+          path: reports/
