@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: '运行模式'
+        description: '模式'
         required: true
         default: 'full'
         type: choice
@@ -19,38 +19,39 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
       
-      - name: 设置 Python 环境
+      - name: 设置 Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
-      - name: 安装依赖
+      - name: 安装核心依赖
         run: |
           pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install openai pandas yfinance pandas_ta requests; fi
+          # 优先安装核心库，确保 main.py 能跑起来
+          pip install openai pandas yfinance pandas_ta requests
+          [ -f requirements.txt ] && pip install -r requirements.txt || echo "跳过清单"
 
-      - name: 准备目录
+      - name: 强制创建报告目录
         run: mkdir -p data logs reports
       
-      - name: 执行股票分析
+      - name: 执行 AI 分析 (DeepSeek 驱动)
         env:
-          # 【关键修改】将你的 DeepSeek 钥匙映射给程序需要的变量名
+          # 【核心】将 DeepSeek 钥匙伪装给程序读取
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
-          OPENAI_MODEL: "deepseek-chat"
           
-          # 基础行情数据源（如果报错，请检查这个 Secret 是否填写）
+          # 【基础】确保行情抓取正常
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
-          
-          # 其他变量保持原样
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
+          
+          # 【通知】保留主要通知
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
           SERVERCHAN3_SENDKEY: ${{ secrets.SERVERCHAN3_SENDKEY }}
         run: |
-          # 强制指定模型参数运行
+          # 强制跳过复杂的大盘自检，先保证股票分析成功
           python main.py --model "deepseek-chat" --no-market-review
 
-      - name: 上传结果
+      - name: 上传分析结果
         uses: actions/upload-artifact@v4
         if: always()
         with:
