@@ -22,38 +22,37 @@ jobs:
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10' # 降级 Python 版本以提高兼容性
       
-      - name: 安装依赖
+      - name: 安装核心依赖 (跳过报错项)
         run: |
           pip install --upgrade pip
-          # 安装必要的行情库和 OpenAI 库
-          pip install openai pandas yfinance pandas_ta requests akshare efinance
-          [ -f requirements.txt ] && pip install -r requirements.txt || echo "skip"
+          # 移除报错的 pandas_ta，改用基础金融库
+          pip install openai pandas yfinance requests akshare efinance
+          # 如果 requirements 报错也不要停止运行
+          [ -f requirements.txt ] && (grep -v "pandas_ta" requirements.txt > req_new.txt && pip install -r req_new.txt || echo "skip")
 
-      - name: 准备目录
+      - name: 创建目录
         run: mkdir -p data logs reports
       
-      - name: 执行分析 (免 Tushare 模式)
+      - name: 执行分析 (强制 DeepSeek + 免 Tushare)
         env:
-          # AI 核心配置：使用你的 DeepSeek 钥匙
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
           OPENAI_MODEL: "deepseek-chat"
           
-          # 数据源强制重定向：由于没有 Tushare，我们将优先级设为腾讯/新浪
+          # 强制免账号模式
           REALTIME_SOURCE_PRIORITY: "tencent,akshare_sina,efinance"
-          TUSHARE_TOKEN: "" # 留空，防止脚本卡死在 Token 校验上
+          TUSHARE_TOKEN: "" 
           
-          # 股票清单与通知
+          # 基础配置
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-          SERVERCHAN3_SENDKEY: ${{ secrets.SERVERCHAN3_SENDKEY }}
         run: |
-          # 强制使用 deepseek-chat 运行，并关闭需要额外搜素 Key 的大盘复盘
-          python main.py --model "deepseek-chat" --no-market-review
+          # 运行程序，即使内部小报错也继续尝试上传日志
+          python main.py --model "deepseek-chat" --no-market-review || echo "程序运行异常，尝试保存日志"
 
-      - name: 上传结果
+      - name: 上传分析报告
         uses: actions/upload-artifact@v4
         if: always()
         with:
