@@ -19,37 +19,36 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
       
-      - name: 设置 Python
+      - name: 设置 Python 环境
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
-      - name: 安装基础依赖
+      - name: 安装依赖
         run: |
           pip install --upgrade pip
-          pip install openai pandas yfinance pandas_ta requests
-          # 尝试安装原项目所有依赖，但不因为某个库失败而停止
-          [ -f requirements.txt ] && pip install -r requirements.txt || echo "跳过 requirements"
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install openai pandas yfinance pandas_ta requests; fi
 
-      - name: 准备环境
+      - name: 准备目录
         run: mkdir -p data logs reports
       
-      - name: 执行分析 (DeepSeek 强制模式)
+      - name: 执行股票分析
         env:
-          # 关键：把 DeepSeek 伪装成 OpenAI 给程序用
+          # 【关键修改】将你的 DeepSeek 钥匙映射给程序需要的变量名
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
+          OPENAI_MODEL: "deepseek-chat"
           
-          # 必须提供的基础配置
-          STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
+          # 基础行情数据源（如果报错，请检查这个 Secret 是否填写）
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           
-          # 通知配置
+          # 其他变量保持原样
+          STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
           SERVERCHAN3_SENDKEY: ${{ secrets.SERVERCHAN3_SENDKEY }}
         run: |
-          # 告诉程序：别找 Gemini 了，直接用 DeepSeek
-          python main.py --model "deepseek-chat" --no-market-review || python main.py --model "deepseek-chat"
+          # 强制指定模型参数运行
+          python main.py --model "deepseek-chat" --no-market-review
 
       - name: 上传结果
         uses: actions/upload-artifact@v4
