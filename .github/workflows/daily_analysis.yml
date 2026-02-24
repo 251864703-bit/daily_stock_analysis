@@ -22,41 +22,42 @@ jobs:
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10' # 降级 Python 版本以提高兼容性
+          python-version: '3.10'
       
-      - name: 安装核心依赖 (跳过报错项)
+      - name: 安装核心依赖
         run: |
           pip install --upgrade pip
-          # 移除报错的 pandas_ta，改用基础金融库
           pip install openai pandas yfinance requests akshare efinance
-          # 如果 requirements 报错也不要停止运行
           [ -f requirements.txt ] && (grep -v "pandas_ta" requirements.txt > req_new.txt && pip install -r req_new.txt || echo "skip")
 
       - name: 创建目录
         run: mkdir -p data logs reports
       
-      - name: 执行分析 (强制 DeepSeek + 免 Tushare)
+      - name: 执行分析 (结果直接输出)
         env:
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
           OPENAI_MODEL: "deepseek-chat"
-          
-          # 强制免账号模式
           REALTIME_SOURCE_PRIORITY: "tencent,akshare_sina,efinance"
-          TUSHARE_TOKEN: "" 
-          
-          # 基础配置
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
         run: |
-          # 运行程序，即使内部小报错也继续尝试上传日志
-          python main.py --model "deepseek-chat" --no-market-review || echo "程序运行异常，尝试保存日志"
+          # 运行程序
+          python main.py --model "deepseek-chat" --no-market-review
+          
+          echo ""
+          echo "=========================================="
+          echo "📝 深度分析报告预览 (直接在此查看)"
+          echo "=========================================="
+          # 寻找生成的任何报告文件并直接打印出来
+          find reports -name "*.md" -exec cat {} + || echo "⚠️ 未找到 Markdown 报告，请检查 logs 目录"
+          echo "=========================================="
 
-      - name: 上传分析报告
+      - name: 强制上传所有生成的内容
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: analysis-report
+          name: all-outputs-${{ github.run_number }}
           path: |
-            reports/
-            logs/
+            reports/**/*
+            logs/*.log
