@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: '模式'
+        description: '运行模式'
         required: true
         default: 'full'
         type: choice
@@ -24,39 +24,38 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: 安装依赖
+      - name: 安装基础依赖
         run: |
           pip install --upgrade pip
-          # 如果没有 requirements.txt，至少安装核心库
           pip install openai pandas yfinance pandas_ta requests
-          [ -f requirements.txt ] && pip install -r requirements.txt || echo "No requirements file"
+          # 尝试安装原项目所有依赖，但不因为某个库失败而停止
+          [ -f requirements.txt ] && pip install -r requirements.txt || echo "跳过 requirements"
 
-      - name: 创建目录
+      - name: 准备环境
         run: mkdir -p data logs reports
       
-      - name: 执行股票分析
+      - name: 执行分析 (DeepSeek 强制模式)
         env:
-          # 核心：使用 DeepSeek 钥匙
+          # 关键：把 DeepSeek 伪装成 OpenAI 给程序用
           OPENAI_API_KEY: ${{ secrets.DEEP_SEEK_KEY }}
           OPENAI_BASE_URL: "https://api.deepseek.com"
           
-          # 股票清单与推送（保留你的配置）
+          # 必须提供的基础配置
           STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
-          SERVERCHAN3_SENDKEY: ${{ secrets.SERVERCHAN3_SENDKEY }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          
+          # 通知配置
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-          
-          # 系统配置
-          LOG_LEVEL: INFO
+          SERVERCHAN3_SENDKEY: ${{ secrets.SERVERCHAN3_SENDKEY }}
         run: |
-          export OPENAI_API_KEY=$OPENAI_API_KEY
-          export OPENAI_BASE_URL=$OPENAI_BASE_URL
-          
-          # 强制指定 deepseek-chat 模型运行
-          python main.py --model "deepseek-chat"
+          # 告诉程序：别找 Gemini 了，直接用 DeepSeek
+          python main.py --model "deepseek-chat" --no-market-review || python main.py --model "deepseek-chat"
 
-      - name: 上传分析报告
+      - name: 上传结果
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: analysis-reports-${{ github.run_number }}
-          path: reports/
+          name: analysis-report
+          path: |
+            reports/
+            logs/
